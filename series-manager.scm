@@ -210,11 +210,29 @@ then generate new series-status-list"
 	(set! %series-status-list new-series-status-list)
 	new-series-status-list)))
 
+(define* (remove-series name-of-series
+			#:optional (series-status-list %series-status-list))
+  (let* ((series-list (series-status-list-series series-status-list))
+	 (new-series-status-list
+	  (make-series-status-list
+	   (remove (compose (cut equal? name-of-series <>) series-name)
+		   series-list))))
+    (if (eq? series-status-list %series-status-list)
+	(set! %series-status-list new-series-status-list)
+	new-series-status-list)))
+
+(define* (update-series-status #:optional (series-status-list %series-status-list))
+  (let* ((series-list (series-status-list-series series-status-list))
+	 (new-series-status-list (make-series-status-list series-list)))
+    (if (eq? series-status-list %series-status-list)
+	(set! %series-status-list new-series-status-list)
+	new-series-status-list)))
+
 (define* (remove-series-by-pred
 	  predicate #:optional (series-status-list %series-status-list))
   (let* ((series-list (series-status-list-series series-status-list))
 	 (new-series-status-list
-	  (make-series-status-list (remove! predicate series-list))))
+	  (make-series-status-list (remove predicate series-list))))
     (if (eq? series-status-list %series-status-list)
 	(set! %series-status-list new-series-status-list)
 	new-series-status-list)))
@@ -318,6 +336,7 @@ If `name-of-series' is #f mark all episodes viewed."
 (define %player "mpv --sub-codepage=enca:ru")
 (define %subtitle " --sub-file ")
 (define %audio " --audio-file ")
+(define %after-command " 2>/dev/null >/dev/null ")
 
 (define (call-player episode)
   (let* ((videos-list (episode-videos episode))
@@ -332,8 +351,8 @@ If `name-of-series' is #f mark all episodes viewed."
 	 (subtitle-files (string-join subtitles-list %subtitle 'prefix))
 
 	 (player-command
-	  (string-join (list %player video-file audio-files subtitle-files))))
-    (display subtitles-list) (newline)
+	  (string-join (list %player video-file audio-files subtitle-files
+			     %after-command))))
     (= 0 (system player-command))))
 
 (define* (play name-of-series name-of-episode
@@ -347,3 +366,6 @@ If `name-of-series' is #f mark all episodes viewed."
   (and-let* ((name-of-series (name-of-series-by-episode name-of-episode
 							series-status-list)))
     (play name-of-series name-of-episode series-status-list)))
+
+
+;;; TODO: Support readline-based interface
