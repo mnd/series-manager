@@ -323,14 +323,17 @@ If `name-of-series' is #f mark all episodes viewed."
   (let* ((videos-list (episode-videos episode))
 	 (video-file (if (null-list? videos-list)
 			 ""
-			 (first videos-list)))
-	 (audios-list (episode-audios episode))
+			 (string-append "'" (first videos-list) "'")))
+	 (audios-list (map (cut string-append "'" <> "'")
+			   (episode-audios episode)))
 	 (audio-files (string-join audios-list %audio 'prefix))
-	 (subtitles-list (episode-subtitles episode))
-	 (subtitle-files (string-join audios-list %subtitle 'prefix))
+	 (subtitles-list (map (cut string-append "'" <> "'")
+			      (episode-subtitles episode)))
+	 (subtitle-files (string-join subtitles-list %subtitle 'prefix))
 
 	 (player-command
 	  (string-join (list %player video-file audio-files subtitle-files))))
+    (display subtitles-list) (newline)
     (= 0 (system player-command))))
 
 (define* (play name-of-series name-of-episode
