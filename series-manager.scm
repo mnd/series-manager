@@ -367,5 +367,13 @@ If `name-of-series' is #f mark all episodes viewed."
 							series-status-list)))
     (play name-of-series name-of-episode series-status-list)))
 
+(define* (play-next name-of-series
+		   #:optional (series-status-list %series-status-list))
+  (and-let* ((episodes (list-new-episodes name-of-series series-status-list))
+	     (next-episode (last episodes)))
+    (play name-of-series next-episode)))
+
+;; Save status before exit
+(add-hook! exit-hook save-status)
 
 ;;; TODO: Support readline-based interface
