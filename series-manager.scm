@@ -25,7 +25,9 @@
 	     (srfi srfi-2)     ; and-let*
 	     (ice-9 regex)     ; make-regex
 	     (ice-9 pretty-print)
-	     (ice-9 ftw))
+	     (ice-9 ftw)       ; ftw
+	     (ice-9 match)     ; match
+	     (ice-9 readline))
 
 ;;; Define series specific data and functions.
 ;;; This data will be stored between runs
@@ -305,8 +307,7 @@ If `name-of-series' is #f mark all episodes viewed."
 (define* (list-new-series-episodes #:optional
 				   (series-status-list %series-status-list))
   (let ((new-series (list-new-series)))
-  (pretty-print (zip new-series
-		     (map list-new-episodes new-series)))))
+    (zip new-series (map list-new-episodes new-series))))
 
 (define* (episode-files name-of-series name-of-episode
 			#:optional (series-status-list %series-status-list))
@@ -376,4 +377,40 @@ If `name-of-series' is #f mark all episodes viewed."
 ;; Save status before exit
 (add-hook! exit-hook save-status)
 
-;;; TODO: Support readline-based interface
+;; Readline based interface
+
+(define (main args)
+  (define (read-eval-command-loop)
+    (call/cc
+     (lambda (return)
+       (and-let* ((command-object (readline))
+		  (command (cond
+			    ((eof-object? command-object) "exit")
+			    ((string? command-object) command-object)
+			    (#t #f)))  ;return #f if it's neither string nor eof
+		  (command-word (first (string-split command #\ )))
+		  (command-args
+		   (if (= (string-length command-word)
+			  (string-length command))
+		       "" ; if there is no text after command return empty string
+		       (substring command (1+ (string-length command-word))))))
+	 (match command-word
+	   ("exit" (return))
+	   ("list" (pretty-print (list-new-series-episodes)))
+	   ("play*" (play* command-args))
+	   ("play-next" (play-next command-args))
+	   (_ (display "Incorrent command!") (newline))))
+       (read-eval-command-loop))))
+
+  (activate-readline)
+  (set-readline-prompt! "series-manager> ")
+  (and-let* ((new-series (list-new-series %series-status-list))
+	     (new-episodes
+	      (append-map (cut list-new-episodes <> %series-status-list)
+			  new-series))
+	     (complete-command
+	      (make-completion-function
+	       (append '("list" "play*" "play-next" "exit")
+		       new-episodes new-series))))
+
+    (with-readline-completion-function complete-command read-eval-command-loop)))
