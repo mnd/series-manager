@@ -1,4 +1,5 @@
-#!/usr/bin/guile -s
+#!/usr/bin/guile \
+-e main -l
 -*- coding: utf-8 -*-
 !#
 ;;;; Copyright (C) 2016 Nikolay Merinov <nikolay.merinov@member.fsf.org>
@@ -87,7 +88,7 @@
   (viewed episode-viewed? set-episode-viewed!))
 
 (define video-regex (make-regexp "(\\.mkv|\\.avi|\\.mp4|\\.webm)$"))
-(define audio-regex (make-regexp "(\\.mp3|\\.aac|\\.flac)$"))
+(define audio-regex (make-regexp "(\\.mp3|\\.aac|\\.flac|\\.mka)$"))
 (define subtitle-regex (make-regexp "(\\.ass|\\.ssa|\\.srt)$"))
 (define (add-file-to-episode! episode filename)
   (cond
@@ -334,27 +335,22 @@ If `name-of-series' is #f mark all episodes viewed."
 
 ;;; Code to call player for series
 
-(define %player "mpv --sub-codepage=enca:ru")
-(define %subtitle " --sub-file ")
-(define %audio " --audio-file ")
-(define %after-command " 2>/dev/null >/dev/null ")
+(define %player (list "mpv" "--sub-codepage=enca:ru" "--fs"))
+(define %subtitle "--sub-file")
+(define %audio "--audio-file")
+(define %after-command '())
 
 (define (call-player episode)
   (let* ((videos-list (episode-videos episode))
 	 (video-file (if (null-list? videos-list)
 			 ""
-			 (string-append "'" (first videos-list) "'")))
-	 (audios-list (map (cut string-append "'" <> "'")
-			   (episode-audios episode)))
-	 (audio-files (string-join audios-list %audio 'prefix))
-	 (subtitles-list (map (cut string-append "'" <> "'")
-			      (episode-subtitles episode)))
-	 (subtitle-files (string-join subtitles-list %subtitle 'prefix))
-
+			 (first videos-list)))
+	 (audios-list (append-map (cut list %audio <>) (episode-audios episode)))
+	 (subtitles-list (append-map (cut list %subtitle <>)
+				     (episode-subtitles episode)))
 	 (player-command
-	  (string-join (list %player video-file audio-files subtitle-files
-			     %after-command))))
-    (= 0 (system player-command))))
+	  (append %player (list video-file) audios-list subtitles-list)))
+    (= 0 (apply system* player-command))))
 
 (define* (play name-of-series name-of-episode
 	       #:optional (series-status-list %series-status-list))
@@ -393,11 +389,13 @@ If `name-of-series' is #f mark all episodes viewed."
 		   (if (= (string-length command-word)
 			  (string-length command))
 		       "" ; if there is no text after command return empty string
-		       (substring command (1+ (string-length command-word))))))
+		       (string-trim-both
+                         (substring command (1+ (string-length command-word)))))))
+	 (add-history command)
 	 (match command-word
 	   ("exit" (return))
 	   ("list" (pretty-print (list-new-series-episodes)))
-	   ("play*" (play* command-args))
+	   ("play" (play* command-args))
 	   ("play-next" (play-next command-args))
 	   (_ (display "Incorrent command!") (newline))))
        (read-eval-command-loop))))
@@ -410,7 +408,7 @@ If `name-of-series' is #f mark all episodes viewed."
 			  new-series))
 	     (complete-command
 	      (make-completion-function
-	       (append '("list" "play*" "play-next" "exit")
+	       (append '("list" "play" "play-next" "exit")
 		       new-episodes new-series))))
 
     (with-readline-completion-function complete-command read-eval-command-loop)))
