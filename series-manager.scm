@@ -1,8 +1,8 @@
-#!/usr/bin/guile \
--e main -l
--*- coding: utf-8 -*-
+#!/bin/sh
+# -*- mode: scheme; coding: utf-8 -*-
+exec guile -l $0 -e '(@ (series-manager) main)' # -s $0 "$@"
 !#
-;;;; Copyright (C) 2016 Nikolay Merinov <nikolay.merinov@member.fsf.org>
+;;;; Copyright (C) 2016-2019 Nikolay Merinov <nikolay.merinov@member.fsf.org>
 ;;;;
 ;;;; This program is free software: you can redistribute it and/or modify
 ;;;; it under the terms of the GNU Affero General Public License as published by
@@ -16,19 +16,35 @@
 ;;;;
 ;;;; You should have received a copy of the GNU Affero General Public License
 ;;;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+(define-module (series-manager)
+  #:use-module (srfi srfi-9)     ; define-record-type
+  #:use-module (srfi srfi-9 gnu) ; set-record-type-printer!
+  #:use-module (ice-9 format)    ; format
+  #:use-module (srfi srfi-10)    ; define-reader-ctor
+  #:use-module (srfi srfi-26)    ; cut
+  #:use-module (srfi srfi-1)     ; map, fold, etc. list library
+  #:use-module (srfi srfi-2)     ; and-let*
+  #:use-module (ice-9 regex)     ; make-regex
+  #:use-module (ice-9 pretty-print)
+  #:use-module (ice-9 ftw)       ; ftw
+  #:use-module (ice-9 match)     ; match
+  #:use-module (ice-9 readline)
+  #:export (main)
+  #:export (add-series)
+  #:export (remove-series))
 
-(use-modules (srfi srfi-9)     ; define-record-type
-	     (srfi srfi-9 gnu) ; set-record-type-printer!
-	     (ice-9 format)    ; format
-	     (srfi srfi-10)    ; define-reader-ctor
-	     (srfi srfi-26)    ; cut
-	     (srfi srfi-1)     ; map, fold, etc. list library
-	     (srfi srfi-2)     ; and-let*
-	     (ice-9 regex)     ; make-regex
-	     (ice-9 pretty-print)
-	     (ice-9 ftw)       ; ftw
-	     (ice-9 match)     ; match
-	     (ice-9 readline))
+(use-modules
+ (srfi srfi-9 gnu) ; set-record-type-printer!
+ (ice-9 format)    ; format
+ (srfi srfi-10)    ; define-reader-ctor
+ (srfi srfi-26)    ; cut
+ (srfi srfi-1)     ; map, fold, etc. list library
+ (srfi srfi-2)     ; and-let*
+ (ice-9 regex)     ; make-regex
+ (ice-9 pretty-print)
+ (ice-9 ftw)       ; ftw
+ (ice-9 match)     ; match
+ (ice-9 readline))
 
 ;;; Define series specific data and functions.
 ;;; This data will be stored between runs
@@ -52,9 +68,7 @@
    (pretty-print (series-name series) port)
    (pretty-print (series-regex series) port)
    (pretty-print (series-viewed series) port)
-   (display ")" port)
-   #;(format port "#,(series ~s ~s ~s)"
-	   (series-name series) (series-regex series) (series-viewed series))))
+   (display ")" port)))
 
 ;; This allow to deserialize <series> record with (read series-file-port)
 (define-reader-ctor 'series
@@ -121,7 +135,7 @@
 
 (define* (make-series-status-list series-list
 				  #:optional (base-directory %series-base-path))
-  "Load `stored-list' from config file,
+  "Take `series-list' list of `<series>' records,
 and search through `series-base-path' for existent episodes.
 Return sorted list of <series-status> structures"
   ;; Make series list
@@ -135,15 +149,15 @@ Return sorted list of <series-status> structures"
 					   (basename filename)))
 	       (episode-name (match:substring episode-match)))
       (or (and-let* ((episode (hash-ref episodes-hash episode-name)))
-	    (add-file-to-episode! episode filename))
-	  (let* ((viewed
-		  (and (member episode-name (series-status-series-viewed series))
-		       #t))
-		 (episode (make-episode episode-name '() '() '() viewed)))
-	    (add-file-to-episode! episode filename)
-	    (hash-set! episodes-hash episode-name episode)
-	    (set-series-status-episodes!
-	     series (cons episode (series-status-episodes series)))))))
+            (add-file-to-episode! episode filename))
+          (let* ((viewed
+                  (and (member episode-name (series-status-series-viewed series))
+                       #t))
+                 (episode (make-episode episode-name '() '() '() viewed)))
+            (add-file-to-episode! episode filename)
+            (hash-set! episodes-hash episode-name episode)
+            (set-series-status-episodes!
+             series (cons episode (series-status-episodes series)))))))
 
   (define (process-series-path filename statinfo flag)
     (case flag
@@ -151,14 +165,14 @@ Return sorted list of <series-status> structures"
 		#t)			;continue processing
       (else #t)))			;skip other filetypes
 
-  (define (episodes-less e1 e2)
+  (define (episodes-<? e1 e2)
     (string<? (episode-name e1) (episode-name e2)))
   (define (sort-episodes-in-series! series-status)
     (set-series-status-episodes! series-status
-       (sort-list! (series-status-episodes series-status) episodes-less)))
-  (define (series-status-less ss1 ss2)
-	  (string<? (series-status-series-name ss1)
-		    (series-status-series-name ss2)))
+      (sort-list! (series-status-episodes series-status) episodes-<?)))
+  (define (series-status-<? ss1 ss2)
+    (string<? (series-status-series-name ss1)
+              (series-status-series-name ss2)))
 
 
   ;; Fill `series-status-list' based on `base-directory'
@@ -166,7 +180,7 @@ Return sorted list of <series-status> structures"
   ;; Sort episodes insode `series-status-list'
   (for-each sort-episodes-in-series! series-status-list)
   ;; Return sorted `series-status-list'
-  (sort-list! series-status-list series-status-less))
+  (sort-list! series-status-list series-status-<?))
 
 (define (series-status-list-series series-status-list)
   (map series-status-series series-status-list))
@@ -202,6 +216,7 @@ then generate new series-status-list"
 ;; save/restore stubs
 (define (save-status) (save-series-status-list %series-status-list))
 (define (restore-status) (set! %series-status-list (restore-series-status-list)))
+(define (update-status) (update-series-status %series-status-list))
 
 (define* (add-series name regex
 		     #:optional (series-status-list %series-status-list))
@@ -251,17 +266,17 @@ then generate new series-status-list"
 		       #:key (viewed #t))
   (and-let*
       ((series-status
-	(series-status-list-series-by-name series-status-list name-of-series))
+        (series-status-list-series-by-name series-status-list name-of-series))
        (series (series-status-series series-status))
        (episode
-	(find (compose (cut string=? name-of-episode <>) episode-name)
-	      (series-status-episodes series-status))))
+        (find (compose (cut string=? name-of-episode <>) episode-name)
+              (series-status-episodes series-status))))
     (set-episode-viewed! episode viewed)
     (let ((ep-without-proceed (remove! (cut equal? name-of-episode <>)
-				       (series-viewed series))))
+                                       (series-viewed series))))
       (if viewed
-	  (set-series-viewed! series (cons name-of-episode ep-without-proceed))
-	  (set-series-viewed! series ep-without-proceed))))
+          (set-series-viewed! series (cons name-of-episode ep-without-proceed))
+          (set-series-viewed! series ep-without-proceed))))
   ;; return new series-status-list
   (unless (eq? series-status-list %series-status-list) series-status-list))
 
@@ -272,9 +287,9 @@ then generate new series-status-list"
 If `name-of-series' is #f mark all episodes viewed."
   (define (series-mark-all-viewed! series-status)
     (for-each (cut mark-viewed! (series-status-series-name series-status)
-		                <> ; name-of-episode
-				series-status-list
-				#:viewed viewed)
+                   <> ; name-of-episode
+                   series-status-list
+                   #:viewed viewed)
 	      ;; mark only unviewed episodes
 	      (map episode-name (partition (negate episode-viewed?)
 					   (series-status-episodes series-status)))))
@@ -295,7 +310,7 @@ If `name-of-series' is #f mark all episodes viewed."
   (fold add-if-new '() series-status-list))
 
 (define* (list-new-episodes name-of-series
-			   #:optional (series-status-list %series-status-list))
+                            #:optional (series-status-list %series-status-list))
   (define (add-if-new episode list)
     (if (episode-viewed? episode)
 	list
@@ -320,7 +335,7 @@ If `name-of-series' is #f mark all episodes viewed."
     episode))
 
 (define* (name-of-series-by-episode name-of-episode #:optional
-				   (series-status-list %series-status-list))
+                                    (series-status-list %series-status-list))
   (and-let* ((series-status (find (compose (cut regexp-exec <> name-of-episode)
 					   series-status-regex)
 				  series-status-list))
@@ -365,7 +380,7 @@ If `name-of-series' is #f mark all episodes viewed."
     (play name-of-series name-of-episode series-status-list)))
 
 (define* (play-next name-of-series
-		   #:optional (series-status-list %series-status-list))
+                    #:optional (series-status-list %series-status-list))
   (and-let* ((episodes (list-new-episodes name-of-series series-status-list))
 	     (next-episode (last episodes)))
     (play name-of-series next-episode)))
@@ -390,14 +405,17 @@ If `name-of-series' is #f mark all episodes viewed."
 			  (string-length command))
 		       "" ; if there is no text after command return empty string
 		       (string-trim-both
-                         (substring command (1+ (string-length command-word)))))))
-	 (add-history command)
-	 (match command-word
-	   ("exit" (return))
-	   ("list" (pretty-print (list-new-series-episodes)))
-	   ("play" (play* command-args))
-	   ("play-next" (play-next command-args))
-	   (_ (display "Incorrent command!") (newline))))
+                        (substring command (1+ (string-length command-word)))))))
+         (add-history command)
+         (match command-word
+           ("exit" (return))
+           ("list" (pretty-print (list-new-series-episodes)))
+           ("play" (play* command-args))
+           ("play-next" (play-next command-args))
+           ("save" (save-status))
+           ("load" (restore-status))
+           ("scan" (update-status))
+           (_ (display "Incorrent command!") (newline))))
        (read-eval-command-loop))))
 
   (activate-readline)
@@ -408,7 +426,7 @@ If `name-of-series' is #f mark all episodes viewed."
 			  new-series))
 	     (complete-command
 	      (make-completion-function
-	       (append '("list" "play" "play-next" "exit")
+	       (append '("list" "play" "play-next" "exit" "save" "load" "scan")
 		       new-episodes new-series))))
 
     (with-readline-completion-function complete-command read-eval-command-loop)))
